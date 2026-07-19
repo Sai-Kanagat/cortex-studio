@@ -47,7 +47,7 @@ class Settings:
     # Per-provider default model tiers (cheap, mid, heavy).
     _DEFAULT_TIERS = {
         "anthropic": ("claude-haiku-4-5-20251001", "claude-sonnet-5", "claude-opus-4-8"),
-        "gemini": ("gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro"),
+        "gemini": ("gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.5-flash"),
         "mock": ("mock-cheap", "mock-mid", "mock-heavy"),
     }
 

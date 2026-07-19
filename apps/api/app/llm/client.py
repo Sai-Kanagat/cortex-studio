@@ -8,6 +8,7 @@ the whole graph runs offline in tests [testing pillar].
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -29,6 +30,9 @@ _PRICING: dict[str, tuple[float, float]] = {
     "claude-sonnet-5": (3.0, 15.0),
     "claude-opus-4-8": (15.0, 75.0),
     # Gemini (paid reference; free tier actual cost = $0)
+    "gemini-flash-lite-latest": (0.10, 0.40),
+    "gemini-flash-latest": (0.30, 2.50),
+    "gemini-3.5-flash": (0.30, 2.50),
     "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-2.5-flash": (0.30, 2.50),
     "gemini-2.5-pro": (1.25, 10.0),
@@ -163,15 +167,33 @@ def complete(
         return Completion(text, Usage(model, in_tok, out_tok, _price(model, in_tok, out_tok)))
 
     # Real path. Providers are imported lazily so the package runs in mock mode with
-    # neither SDK installed.
-    if settings.llm_provider == "gemini":
-        text, in_tok, out_tok = _gemini(system, prompt, model, max_tokens)
-    else:
-        text, in_tok, out_tok = _anthropic(system, prompt, model, max_tokens)
+    # neither SDK installed. Wrapped in backoff-retry so free-tier rate limits (e.g.
+    # Gemini's 5 req/min/model) self-heal instead of failing the whole run.
+    fn = _gemini if settings.llm_provider == "gemini" else _anthropic
+    text, in_tok, out_tok = _with_retry(fn, system, prompt, model, max_tokens)
 
     if CACHE_ENABLED:
         _CACHE[key] = text
     return Completion(text, Usage(model, in_tok, out_tok, _price(model, in_tok, out_tok)))
+
+
+def _with_retry(fn, system, prompt, model, max_tokens, attempts: int = 5):
+    import time
+
+    delay = 4.0
+    for i in range(attempts):
+        try:
+            return fn(system, prompt, model, max_tokens)
+        except Exception as e:
+            msg = str(e)
+            transient = "429" in msg or "RESOURCE_EXHAUSTED" in msg or "overloaded" in msg or "503" in msg
+            if not transient or i == attempts - 1:
+                raise
+            # honor the API's suggested retry delay when present
+            m = re.search(r"retryDelay['\"]?:?\s*['\"]?(\d+)", msg)
+            wait = float(m.group(1)) + 1 if m else delay
+            time.sleep(min(wait, 30))
+            delay *= 2
 
 
 def _anthropic(system: str, prompt: str, model: str, max_tokens: int) -> tuple[str, int, int]:
@@ -194,14 +216,20 @@ def _gemini(system: str, prompt: str, model: str, max_tokens: int) -> tuple[str,
 
     client = genai.Client(api_key=settings.gemini_api_key)
     wants_json = "json" in (system + prompt).lower()
+    cfg = dict(
+        system_instruction=system,
+        # Gemini 2.5/3.x spend "thinking" tokens from the output budget; disable it so
+        # short structured replies aren't truncated before the JSON is emitted, and give
+        # generous headroom.
+        max_output_tokens=max(max_tokens, 2048),
+        response_mime_type="application/json" if wants_json else "text/plain",
+    )
+    try:
+        cfg["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    except Exception:
+        pass  # older SDK without thinking_config
     resp = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system,
-            max_output_tokens=max_tokens,
-            response_mime_type="application/json" if wants_json else "text/plain",
-        ),
+        model=model, contents=prompt, config=types.GenerateContentConfig(**cfg)
     )
     text = resp.text or ""
     um = getattr(resp, "usage_metadata", None)

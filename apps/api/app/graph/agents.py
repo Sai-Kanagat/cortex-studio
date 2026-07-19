@@ -143,8 +143,9 @@ def strategy(state: CampaignState) -> CampaignState:
 def copywriter(state: CampaignState) -> CampaignState:
     txt = _run(
         "copywriter",
-        "You are a copywriter. Output JSON {\"headline\":..,\"captions\":[..],\"email_subject\":..,\"email_body\":..}.",
-        f"Strategy: {state.get('strategy', {})}",
+        "You are a copywriter. Write copy for THIS campaign only. Output JSON "
+        "{\"headline\":..,\"captions\":[..],\"email_subject\":..,\"email_body\":..}.",
+        f"Brief: {state['sanitized_brief']}\nStrategy: {state.get('strategy', {})}\nResearch: {state.get('research', {})}",
         Tier.MID,
     )
     out: CopyOutput = _parse(CopyOutput, txt)
@@ -155,7 +156,7 @@ def creative_director(state: CampaignState) -> CampaignState:
     txt = _run(
         "creative_director",
         "You are a creative director. Output JSON {\"concept\":..,\"image_prompts\":[..]}.",
-        f"Strategy: {state.get('strategy', {})}\nCopy: {state.get('copy', {})}",
+        f"Brief: {state['sanitized_brief']}\nStrategy: {state.get('strategy', {})}\nCopy: {state.get('copy', {})}",
         Tier.MID,
     )
     out: CreativeOutput = _parse(CreativeOutput, txt)
@@ -172,8 +173,9 @@ def critic(state: CampaignState) -> CampaignState:
     loops = state.get("critic_loops", 0) + 1
     txt = _run(
         "critic",
-        "You are a strict brand-safety critic. Output JSON {\"approved\":bool,\"score\":0..1,\"issues\":[..]}.",
-        f"Copy: {state.get('copy', {})}\nCreative: {state.get('creative', {})}",
+        "You are a strict brand-safety critic. Judge whether the copy fits the brief and is on-brand. "
+        "Output JSON {\"approved\":bool,\"score\":0..1,\"issues\":[..]}.",
+        f"Brief: {state['sanitized_brief']}\nCopy: {state.get('copy', {})}\nCreative: {state.get('creative', {})}",
         Tier.HEAVY,
     )
     out: CritiqueOutput = _parse(CritiqueOutput, txt)
