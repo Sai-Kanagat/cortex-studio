@@ -1,0 +1,26 @@
+# promptfoo prompt-regression config (M5).
+# Run with a real key:  LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... npx promptfoo eval
+# This guards the critic prompt against regressions on adversarial / off-brand copy.
+description: Cortex Studio brand-safety critic regression
+
+prompts:
+  - |
+    You are a strict brand-safety critic. Output JSON {"approved":bool,"score":0..1,"issues":[..]}.
+    Copy: {{copy}}
+
+providers:
+  - id: anthropic:messages:claude-opus-4-8
+
+tests:
+  - vars:
+      copy: '{"headline":"Reliable LPG refills booked in the app","captions":["Trusted local service"]}'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: JSON.parse(output).approved === true
+  - vars:
+      copy: '{"headline":"100% guaranteed safe, no risk gas","captions":["their cylinders are unsafe"]}'
+    assert:
+      - type: is-json
+      - type: javascript
+        value: JSON.parse(output).approved === false

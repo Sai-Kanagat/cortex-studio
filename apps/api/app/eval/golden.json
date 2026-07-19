@@ -1,0 +1,18 @@
+[
+  {
+    "id": "sai-energy-refill",
+    "brief": "Launch a refill-signup campaign for Sai Energy LPG (Indane distributor, Coimbatore). Goal: more households booking cylinder refills via the app. Tone: trustworthy, local, safety-first.",
+    "must_include_any": ["safety", "trust", "reliable", "local", "refill", "app"],
+    "must_not_include": ["guaranteed safe", "no risk", "deadly"],
+    "min_channels": 1,
+    "expect_status": "approved"
+  },
+  {
+    "id": "commercial-lpg",
+    "brief": "Campaign for Sai Energy commercial LPG targeting small eateries in Coimbatore. Reliable supply, no downtime.",
+    "must_include_any": ["reliable", "supply", "business", "commercial", "delivery"],
+    "must_not_include": ["deadly", "explosion"],
+    "min_channels": 1,
+    "expect_status": "approved"
+  }
+]

@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cortex Studio</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#141821; --line:#232a37; --ink:#e6e9ef; --mut:#8b94a7; --acc:#5b9dff; --ok:#3fb950; --bad:#f85149; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:18px 24px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:12px; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.3px; }
+  header span { color:var(--mut); font-size:12px; }
+  main { display:grid; grid-template-columns:360px 1fr; height:calc(100vh - 59px); }
+  .left { border-right:1px solid var(--line); padding:20px; overflow:auto; }
+  .right { padding:20px; overflow:auto; }
+  textarea { width:100%; min-height:120px; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px; resize:vertical; font:inherit; }
+  .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  button { background:var(--acc); color:#04122e; border:0; padding:9px 14px; border-radius:7px; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
+  button.ok { background:var(--ok); color:#03210c; }
+  button.bad { background:var(--bad); color:#2a0606; }
+  h3 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--mut); margin:22px 0 8px; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
+  .ev { display:flex; gap:10px; padding:6px 0; border-bottom:1px dashed var(--line); }
+  .ev b { color:var(--acc); min-width:130px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+  .badge.ok { background:rgba(63,185,80,.15); color:var(--ok); }
+  .badge.bad { background:rgba(248,81,73,.15); color:var(--bad); }
+  pre { white-space:pre-wrap; word-break:break-word; margin:0 0 6px; color:var(--ink); font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  td, th { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:600; }
+  .muted { color:var(--mut); }
+  .flags { color:var(--bad); font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cortex Studio</h1>
+  <span>multi-agent marketing campaign system</span>
+  <span id="health" style="margin-left:auto"></span>
+</header>
+<main>
+  <div class="left">
+    <h3>Campaign brief</h3>
+    <textarea id="brief">Launch a refill-signup campaign for Sai Energy LPG (Indane distributor, Coimbatore). Goal: more households booking cylinder refills via the app. Tone: trustworthy, local, safety-first.</textarea>
+    <div class="row">
+      <button id="runAuto">Run (auto-approve)</button>
+      <button id="runHitl" class="ghost">Run with approval</button>
+    </div>
+    <div id="gate"></div>
+    <h3>Agent activity</h3>
+    <div id="events" class="panel"></div>
+  </div>
+  <div class="right">
+    <h3>Campaign package</h3>
+    <div id="package" class="panel"></div>
+    <h3>Cost &amp; trace</h3>
+    <div id="trace" class="panel"></div>
+  </div>
+</main>
+<script>
+// All dynamic values are inserted via textContent / DOM nodes — never innerHTML with
+// interpolation — so untrusted model output cannot inject markup (XSS-safe).
+const API = location.protocol === "file:" ? "http://localhost:8000" : "";
+const $ = id => document.getElementById(id);
+let currentRun = null;
+
+function clear(node){ while(node.firstChild) node.removeChild(node.firstChild); }
+function elem(tag, cls, text){ const e = document.createElement(tag); if(cls) e.className = cls; if(text!=null) e.textContent = text; return e; }
+function muted(node, text){ clear(node); node.appendChild(elem("span","muted",text)); }
+
+async function health(){
+  try { const d = await (await fetch(API + "/health")).json();
+    const el = $("health"); clear(el);
+    el.appendChild(document.createTextNode("provider: "));
+    el.appendChild(elem("b", null, d.llm_provider + (d.using_real_llm ? " (live)" : " (mock)")));
+  } catch { $("health").textContent = "API offline"; }
+}
+
+function addEvent(node, msg){
+  const el = $("events");
+  const div = elem("div", "ev");
+  div.appendChild(elem("b", null, node));
+  div.appendChild(elem("span", null, msg));
+  el.appendChild(div);
+}
+
+function section(parent, title, text){
+  parent.appendChild(elem("h3", null, title));
+  parent.appendChild(elem("pre", null, text || "—"));
+}
+
+function renderPackage(pkg){
+  const p = $("package"); clear(p);
+  if(!pkg){ muted(p, "No package."); return; }
+  const c = pkg.copy||{}, s = pkg.strategy||{}, cr = pkg.creative||{}, q = pkg.critique||{};
+  const ok = pkg.status === "approved";
+  const head = elem("div");
+  head.appendChild(elem("span", "badge " + (ok?"ok":"bad"), pkg.status || "?"));
+  head.appendChild(elem("span", "muted", "  brand-safety score: " + (q.score ?? "—")));
+  p.appendChild(head);
+  section(p, "Positioning", s.positioning);
+  section(p, "Channels", (s.channels||[]).join(", "));
+  section(p, "Headline", c.headline);
+  section(p, "Captions", (c.captions||[]).map(x=>"• "+x).join("\n"));
+  section(p, "Email", (c.email_subject||"") + "\n" + (c.email_body||""));
+  section(p, "Creative", (cr.concept||"") + "\n" + (cr.image_prompts||[]).map(x=>"– "+x).join("\n"));
+  if(q.violations && q.violations.length)
+    p.appendChild(elem("div", "flags", "violations: " + q.violations.map(v=>v.category).join(", ")));
+}
+
+function renderTrace(cost, trace){
+  const t = $("trace"); clear(t);
+  if(!trace){ muted(t, "—"); return; }
+  const table = elem("table");
+  const hr = elem("tr");
+  ["agent","latency","tokens","cost"].forEach(h=>hr.appendChild(elem("th",null,h)));
+  table.appendChild(hr);
+  trace.spans.forEach(s=>{
+    const tr = elem("tr");
+    tr.appendChild(elem("td", null, s.name));
+    tr.appendChild(elem("td", null, s.latency_ms + " ms"));
+    tr.appendChild(elem("td", null, (s.input_tokens + s.output_tokens) + " tok"));
+    tr.appendChild(elem("td", null, "$" + s.cost_usd.toFixed(6)));
+    table.appendChild(tr);
+  });
+  const total = elem("tr");
+  total.appendChild(elem("th", null, "TOTAL"));
+  total.appendChild(elem("th", null, trace.total_latency_ms + " ms"));
+  total.appendChild(elem("th", null, ""));
+  total.appendChild(elem("th", null, "$" + trace.total_cost_usd.toFixed(6)));
+  table.appendChild(total);
+  t.appendChild(table);
+}
+
+function reset(){ muted($("events"), "running…"); clear($("gate")); muted($("package"), "working…"); muted($("trace"), "—"); }
+
+async function runAuto(){
+  reset(); currentRun = null;
+  const res = await fetch(API + "/api/runs/stream", {method:"POST", headers:{"content-type":"application/json"},
+    body: JSON.stringify({brief: $("brief").value})});
+  clear($("events"));
+  const reader = res.body.getReader(), dec = new TextDecoder(); let buf = "";
+  while(true){
+    const {value, done} = await reader.read(); if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let idx;
+    while((idx = buf.indexOf("\n\n")) >= 0){
+      const line = buf.slice(0, idx).trim(); buf = buf.slice(idx+2);
+      if(!line.startsWith("data:")) continue;
+      const d = JSON.parse(line.slice(5).trim());
+      if(d.type==="agent_event") addEvent(d.node, d.message);
+      if(d.type==="run_finished"){ renderPackage(d.package); renderTrace(d.cost, d.trace); }
+    }
+  }
+}
+
+async function runHitl(){
+  reset();
+  const d = await (await fetch(API + "/api/runs/hitl", {method:"POST", headers:{"content-type":"application/json"},
+    body: JSON.stringify({brief: $("brief").value})})).json();
+  currentRun = d.run_id;
+  clear($("events")); addEvent("run", "paused for human approval");
+  renderPackage(Object.assign({}, d.draft, {status:"awaiting_approval"}));
+  const gate = $("gate"); clear(gate);
+  const box = elem("div", "panel");
+  box.appendChild(elem("b", null, "Human approval required"));
+  const row = elem("div", "row");
+  const approve = elem("button", "ok", "Approve"); approve.onclick = ()=>resume("approve");
+  const reject = elem("button", "bad", "Reject & revise"); reject.onclick = ()=>resume("reject");
+  row.appendChild(approve); row.appendChild(reject); box.appendChild(row); gate.appendChild(box);
+}
+
+async function resume(action){
+  muted($("gate"), "submitting decision…");
+  const d = await (await fetch(API + "/api/runs/" + currentRun + "/resume", {method:"POST",
+    headers:{"content-type":"application/json"}, body: JSON.stringify({action})})).json();
+  addEvent("human_gate", "decision: " + action);
+  renderPackage(d.package); renderTrace(d.cost, d.package && d.package.trace);
+  clear($("gate"));
+}
+
+$("runAuto").onclick = runAuto;
+$("runHitl").onclick = runHitl;
+muted($("events"), "No run yet.");
+muted($("package"), "Run a brief to see the output.");
+muted($("trace"), "—");
+health();
+</script>
+</body>
+</html>

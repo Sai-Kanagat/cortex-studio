@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-eval:
+    runs-on: ubuntu-latest
+    env:
+      LLM_PROVIDER: mock   # deterministic, no API key needed in CI
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r apps/api/requirements.txt
+      - name: Seed brand store
+        run: python scripts/ingest_brand.py
+      - name: Unit + integration + trajectory tests
+        run: cd apps/api && python -m pytest -q
+      - name: Golden-set evaluation gate
+        run: python scripts/run_evals.py
