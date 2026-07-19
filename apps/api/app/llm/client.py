@@ -21,19 +21,30 @@ class Tier(str, Enum):
     HEAVY = "heavy"   # hard reasoning, final synthesis, adversarial critique
 
 
-# Approx USD per 1M tokens (input, output). Update from the claude-api skill before
-# quoting real numbers; these are placeholders for the cost meter's arithmetic.
+# Approx USD per 1M tokens (input, output). Reference/paid-tier prices so the cost
+# meter is illustrative even on a provider's free tier (where real spend is ~$0).
 _PRICING: dict[str, tuple[float, float]] = {
-    settings.model_cheap: (1.0, 5.0),
-    settings.model_mid: (3.0, 15.0),
-    settings.model_heavy: (15.0, 75.0),
+    # Anthropic
+    "claude-haiku-4-5-20251001": (1.0, 5.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-opus-4-8": (15.0, 75.0),
+    # Gemini (paid reference; free tier actual cost = $0)
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-2.5-pro": (1.25, 10.0),
+    # Mock tiers (illustrative, so the cost meter is non-zero offline)
+    "mock-cheap": (1.0, 5.0),
+    "mock-mid": (3.0, 15.0),
+    "mock-heavy": (15.0, 75.0),
 }
 
-_TIER_MODEL: dict[Tier, str] = {
-    Tier.CHEAP: settings.model_cheap,
-    Tier.MID: settings.model_mid,
-    Tier.HEAVY: settings.model_heavy,
-}
+
+def _tier_model(tier: Tier) -> str:
+    return {
+        Tier.CHEAP: settings.tier_cheap,
+        Tier.MID: settings.tier_mid,
+        Tier.HEAVY: settings.tier_heavy,
+    }[tier]
 
 
 @dataclass
@@ -135,7 +146,7 @@ def complete(
     max_tokens: int = 1024,
     force_model: str | None = None,
 ) -> Completion:
-    model = force_model or _TIER_MODEL[tier]
+    model = force_model or _tier_model(tier)
 
     key = (model, system, prompt)
     if CACHE_ENABLED and key in _CACHE:
@@ -151,20 +162,49 @@ def complete(
             _CACHE[key] = text
         return Completion(text, Usage(model, in_tok, out_tok, _price(model, in_tok, out_tok)))
 
-    # Real path. Imported lazily so the package works without anthropic installed
-    # in offline/mock environments.
+    # Real path. Providers are imported lazily so the package runs in mock mode with
+    # neither SDK installed.
+    if settings.llm_provider == "gemini":
+        text, in_tok, out_tok = _gemini(system, prompt, model, max_tokens)
+    else:
+        text, in_tok, out_tok = _anthropic(system, prompt, model, max_tokens)
+
+    if CACHE_ENABLED:
+        _CACHE[key] = text
+    return Completion(text, Usage(model, in_tok, out_tok, _price(model, in_tok, out_tok)))
+
+
+def _anthropic(system: str, prompt: str, model: str, max_tokens: int) -> tuple[str, int, int]:
     import anthropic
 
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     resp = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system,
+        model=model, max_tokens=max_tokens, system=system,
         messages=[{"role": "user", "content": prompt}],
     )
-    text = "".join(block.text for block in resp.content if block.type == "text")
-    in_tok = resp.usage.input_tokens
-    out_tok = resp.usage.output_tokens
-    if CACHE_ENABLED:
-        _CACHE[key] = text
-    return Completion(text, Usage(model, in_tok, out_tok, _price(model, in_tok, out_tok)))
+    text = "".join(b.text for b in resp.content if b.type == "text")
+    return text, resp.usage.input_tokens, resp.usage.output_tokens
+
+
+def _gemini(system: str, prompt: str, model: str, max_tokens: int) -> tuple[str, int, int]:
+    """Google Gemini via the google-genai SDK. Free API key: aistudio.google.com.
+    We request JSON mime-type so the agents' structured-output parsing stays reliable."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    wants_json = "json" in (system + prompt).lower()
+    resp = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            max_output_tokens=max_tokens,
+            response_mime_type="application/json" if wants_json else "text/plain",
+        ),
+    )
+    text = resp.text or ""
+    um = getattr(resp, "usage_metadata", None)
+    in_tok = getattr(um, "prompt_token_count", 0) or 0
+    out_tok = getattr(um, "candidates_token_count", 0) or 0
+    return text, in_tok, out_tok

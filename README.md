@@ -57,12 +57,16 @@ cd apps/api && python -m pytest -q         # tests
 uvicorn app.main:app --reload              # API on :8000  (GET /health)
 ```
 
-Real LLM:
+Real LLM (Gemini has a free tier — key from https://aistudio.google.com, no card):
 
 ```bash
-export LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-...
+export LLM_PROVIDER=gemini GEMINI_API_KEY=...        # free
+# or: export LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=sk-...
 python scripts/smoke.py
 ```
+
+Model tiers auto-select per provider (Gemini: flash-lite / flash / pro), so the cheap
+routing steps and the heavy critic use the right model with no extra config.
 
 Full stack (once Docker Desktop is running):
 

@@ -38,4 +38,4 @@ def test_prompt_cache_zeroes_repeat_cost():
 def test_model_router_selects_tiers():
     # cheap != heavy model ids, proving per-step routing happens
     from app.core.config import settings
-    assert settings.model_cheap != settings.model_heavy
+    assert settings.tier_cheap != settings.tier_heavy

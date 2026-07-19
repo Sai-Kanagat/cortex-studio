@@ -4,6 +4,7 @@ pydantic==2.10.4
 langgraph==0.2.60
 langgraph-checkpoint==2.0.9
 anthropic==0.42.0
+google-genai==0.8.0
 httpx==0.28.1
 python-dotenv==1.0.1
 pytest==8.3.4

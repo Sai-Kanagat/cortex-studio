@@ -30,6 +30,7 @@ def health() -> dict:
         "status": "ok",
         "llm_provider": settings.llm_provider,
         "using_real_llm": settings.use_real_llm,
+        "models": {"cheap": settings.tier_cheap, "mid": settings.tier_mid, "heavy": settings.tier_heavy},
     }
 
 
