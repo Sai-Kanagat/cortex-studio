@@ -27,6 +27,10 @@ class Settings:
     model_mid: str = _get("MODEL_MID", "")
     model_heavy: str = _get("MODEL_HEAVY", "")
 
+    # Multimodal: image generation + vision-capable model (Gemini only).
+    model_image: str = _get("MODEL_IMAGE", "gemini-2.5-flash-image")
+    model_vision: str = _get("MODEL_VISION", "gemini-flash-latest")
+
     # --- Infra ---
     database_url: str = _get(
         "DATABASE_URL", "postgresql://cortex:cortex@localhost:5432/cortex"
@@ -40,6 +44,12 @@ class Settings:
 
     # --- Security ---
     api_key: str = _get("CORTEX_API_KEY", "")  # empty => auth disabled (local dev)
+    # Passcode gate for the hosted microsite while WIP. Default 0000; set "" to disable.
+    passcode: str = _get("CORTEX_PASSCODE", "0000")
+    # Per-IP live-run cap per day (gated free-tier protection).
+    daily_run_cap: int = int(_get("CORTEX_DAILY_RUN_CAP", "5"))
+    # Comma-separated extra CORS origins (the portfolio site).
+    cors_origins: str = _get("CORTEX_CORS_ORIGINS", "https://saikanagat.com,https://www.saikanagat.com")
 
     # --- Agent behaviour ---
     max_critic_loops: int = int(_get("MAX_CRITIC_LOOPS", "2"))

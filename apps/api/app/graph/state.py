@@ -41,10 +41,43 @@ class CreativeOutput(BaseModel):
 
 
 class LocalizationOutput(BaseModel):
-    # Coimbatore is Tamil-speaking; localizing lifts trust for a local LPG brand.
-    headline_ta: str = ""
-    captions_ta: list[str] = Field(default_factory=list)
+    # Localizes to the campaign's target-market language (Italian for a Vespa launch,
+    # Tamil for a Coimbatore brand, etc.) so copy reads native, not translated.
+    language: str = ""
+    headline_local: str = ""
+    captions_local: list[str] = Field(default_factory=list)
     note: str = ""
+
+
+class BrandProfile(BaseModel):
+    """Extracted from an uploaded brand book (or a text brand doc)."""
+    name: str = ""
+    palette: list[str] = Field(default_factory=list)   # hex colours
+    typography: str = ""
+    voice: str = ""
+    dos: list[str] = Field(default_factory=list)
+    donts: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class VisualAsset(BaseModel):
+    """A generated image asset + its self-QA verdict."""
+    kind: str = ""            # hero | poster | carousel | storyboard_frame
+    prompt: str = ""
+    caption: str = ""
+    url: str = ""             # served path, /assets/<run>/<file>
+    file: str = ""
+    mime: str = ""
+    qa_score: float = 0.0
+    qa_issues: list[str] = Field(default_factory=list)
+    regenerated: int = 0
+
+
+class StoryboardFrame(BaseModel):
+    scene: int = 0
+    shot: str = ""            # shot description
+    caption: str = ""
+    prompt: str = ""
 
 
 class CritiqueOutput(BaseModel):
@@ -62,6 +95,8 @@ class CampaignState(TypedDict, total=False):
     run_id: str
     brief: str
     sanitized_brief: str
+    upload_path: str          # optional uploaded brand book (pdf/image)
+    brand_profile: dict[str, Any]
 
     # agent outputs
     plan: list[str]
@@ -70,6 +105,9 @@ class CampaignState(TypedDict, total=False):
     copy: dict[str, Any]
     creative: dict[str, Any]
     localization: dict[str, Any]
+    visuals: list[dict[str, Any]]        # hero, poster, carousel VisualAssets
+    storyboard: list[dict[str, Any]]     # StoryboardFrame + generated asset
+    video: dict[str, Any]                # slideshow mp4 descriptor (optional)
     critique: dict[str, Any]
 
     recalled_episodes: list[dict[str, Any]]

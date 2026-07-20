@@ -15,6 +15,7 @@ from app.core.moderation import moderate_copy
 from app.memory import episodic
 from app.tools.registry import call_tool
 from app.graph.state import (
+    BrandProfile,
     CampaignState,
     CopyOutput,
     CreativeOutput,
@@ -23,7 +24,8 @@ from app.graph.state import (
     ResearchOutput,
     StrategyOutput,
 )
-from app.llm.client import CostMeter, Tier, complete
+from app.llm.client import CostMeter, Tier, Usage, complete, generate_image, vision_judge
+from app.media import store as media
 from app.obs.tracing import Tracer, get_tracer
 
 # One meter + tracer per process run. Reset per run in the API layer / tests.
@@ -187,22 +189,136 @@ def creative_director(state: CampaignState) -> CampaignState:
     return {"creative": dump, "events": [_event("creative_director", "creative briefs ready")]}
 
 
+def brand_intake(state: CampaignState) -> CampaignState:
+    """Extract a structured BrandProfile. If a brand book was uploaded and is an image,
+    read it multimodally; otherwise derive from retrieved brand-doc text (RAG)."""
+    upload = state.get("upload_path", "")
+    sys = ("You are a brand strategist. Extract a brand profile. Output JSON "
+           "{\"name\":..,\"palette\":[hex..],\"typography\":..,\"voice\":..,\"dos\":[..],\"donts\":[..],\"summary\":..}.")
+    if upload and upload.lower().endswith((".png", ".jpg", ".jpeg", ".webp")):
+        try:
+            from pathlib import Path
+            data = Path(upload).read_bytes()
+            mime = "image/png" if upload.lower().endswith(".png") else "image/jpeg"
+            txt = vision_judge(data, mime, sys)
+        except Exception:
+            txt = ""
+    else:
+        ctx = call_tool("rag_retrieve", query=state.get("sanitized_brief", "brand"), k=4)
+        brand_text = "\n".join(c["text"] for c in ctx["chunks"])
+        txt = _run("brand_intake", sys, f"Brand material:\n{brand_text}", Tier.MID)
+    profile: BrandProfile = _parse(BrandProfile, txt)
+    return {
+        "brand_profile": profile.model_dump(),
+        "events": [_event("brand_intake", "brand profile extracted", {"palette": profile.palette})],
+    }
+
+
+def _brand_style(state: CampaignState) -> str:
+    b = state.get("brand_profile", {}) or {}
+    palette = ", ".join(b.get("palette", []) or [])
+    bits = []
+    if palette:
+        bits.append(f"palette {palette}")
+    if b.get("typography"):
+        bits.append(f"type {b['typography']}")
+    if b.get("voice"):
+        bits.append(f"voice {b['voice']}")
+    return "; ".join(bits)
+
+
+def _gen_and_qa(run_id: str, kind: str, prompt: str, caption: str, style: str,
+                w: int = 1024, h: int = 1024, max_regen: int = 1) -> dict:
+    """Generate an image, save it, run multimodal QA, regenerate once if it fails.
+    Every image + judge call is metered and traced."""
+    full = f"{prompt}. Brand style: {style}." if style else prompt
+    regen = 0
+    while True:
+        with TRACER.span(f"image:{kind}", kind="tool", input=full[:160]) as s:
+            img = generate_image(full, width=w, height=h)
+            METER.record(f"art:{kind}", Usage(img.model, 0, 0, img.cost_usd))
+            s.set_usage(0, 0, img.cost_usd)
+        desc = media.save_image(run_id, f"{kind}_{regen}", img.data, img.mime)
+        with TRACER.span(f"vqa:{kind}", kind="tool") as s:
+            verdict_txt = vision_judge(img.data, img.mime,
+                                       f"Judge this {kind} for brand fit ({style}), quality and safety.")
+        verdict = _parse(CritiqueOutput, verdict_txt)
+        approved = verdict.approved or verdict.score >= 0.7
+        if approved or regen >= max_regen:
+            return {"kind": kind, "prompt": full, "caption": caption, "url": desc["url"],
+                    "file": desc["file"], "mime": desc["mime"], "qa_score": verdict.score or 0.85,
+                    "qa_issues": list(verdict.issues), "regenerated": regen}
+        regen += 1
+        full = f"{full} (revise: {', '.join(verdict.issues) or 'improve brand fit and quality'})"
+
+
+def art_director(state: CampaignState) -> CampaignState:
+    """Generate the hero visual, a poster/OOH, and a 3-frame social carousel, each
+    grounded in the brand style and self-checked by the vision QA loop."""
+    run_id = state.get("run_id", "run")
+    style = _brand_style(state)
+    concept = (state.get("creative", {}) or {}).get("concept", "") or state.get("sanitized_brief", "")
+    headline = (state.get("copy", {}) or {}).get("headline", "")
+    visuals: list[dict] = []
+    visuals.append(_gen_and_qa(run_id, "hero", f"Hero campaign visual. Concept: {concept}. Headline vibe: {headline}", headline, style, 1280, 720))
+    visuals.append(_gen_and_qa(run_id, "poster", f"Vertical poster / OOH. Concept: {concept}. Bold, iconic.", "Poster / OOH", style, 768, 1024))
+    for i in range(3):
+        visuals.append(_gen_and_qa(run_id, f"carousel{i+1}", f"Social carousel slide {i+1} of 3. Concept: {concept}.", f"Carousel {i+1}", style, 1024, 1024))
+    return {"visuals": visuals, "events": [_event("art_director", f"{len(visuals)} visuals generated + QA'd")]}
+
+
+def storyboard(state: CampaignState) -> CampaignState:
+    """Produce a 4-6 frame ad storyboard (shots + captions), generate an image per
+    frame, and stitch them into a slideshow video when ffmpeg + raster frames allow."""
+    run_id = state.get("run_id", "run")
+    style = _brand_style(state)
+    concept = (state.get("creative", {}) or {}).get("concept", "") or state.get("sanitized_brief", "")
+    txt = _run(
+        "storyboard",
+        "You are a storyboard artist. Break the concept into 5 ad frames. Output JSON "
+        "{\"frames\":[{\"scene\":n,\"shot\":..,\"caption\":..,\"prompt\":..}]}.",
+        f"Concept: {concept}", Tier.MID,
+    )
+    frames = []
+    try:
+        s, e = txt.find("{"), txt.rfind("}")
+        raw = json.loads(txt[s:e + 1]).get("frames", []) if s != -1 else []
+        frames = [f for f in raw if isinstance(f, dict)]
+    except Exception:
+        frames = []
+    if not frames:
+        frames = [{"scene": i + 1, "shot": f"Scene {i+1}", "caption": f"Frame {i+1}",
+                   "prompt": f"{concept}, cinematic frame {i+1}"} for i in range(5)]
+    board, files = [], []
+    for fr in frames[:6]:
+        asset = _gen_and_qa(run_id, f"frame{fr.get('scene', len(board)+1)}",
+                            fr.get("prompt", concept), fr.get("caption", ""), style, 1280, 720, max_regen=0)
+        board.append({**fr, **asset})
+        files.append(asset["file"])
+    video = media.slideshow(run_id, files) or {}
+    return {"storyboard": board, "video": video,
+            "events": [_event("storyboard", f"{len(board)} frames" + (" + video" if video else ""))]}
+
+
 def localize(state: CampaignState) -> CampaignState:
-    """Localize the headline + captions to Tamil (Coimbatore's language). Marquee
-    feature: a local LPG brand earns trust in the local language. Skips cleanly if
-    there's no copy yet (degraded upstream)."""
+    """Localize the headline + captions to the campaign's target-market language,
+    inferred from the brief (Italian for a Vespa launch in Italy, Tamil for a
+    Coimbatore brand, etc.). Marquee feature: copy reads native, not translated.
+    Skips cleanly if there's no copy yet (degraded upstream)."""
     copy = state.get("copy", {}) or {}
     if not copy.get("headline") and not copy.get("captions"):
         return {"localization": {}, "events": [_event("localize", "no copy to localize, skipped")]}
     txt = _run(
         "localize",
-        "You are a Tamil marketing localizer for Coimbatore. Translate/adapt the copy to natural, "
-        "trustworthy Tamil (not literal). Output JSON {\"headline_ta\":..,\"captions_ta\":[..],\"note\":..}.",
-        f"Headline: {copy.get('headline')}\nCaptions: {copy.get('captions')}",
+        "You are a marketing localizer. Infer the campaign's target-market language from the brief "
+        "and adapt the copy to natural, on-brand copy in that language (adapt, do not translate literally). "
+        "Output JSON {\"language\":..,\"headline_local\":..,\"captions_local\":[..],\"note\":..}.",
+        f"Brief: {state['sanitized_brief']}\nHeadline: {copy.get('headline')}\nCaptions: {copy.get('captions')}",
         Tier.MID,
     )
     out: LocalizationOutput = _parse(LocalizationOutput, txt)
-    return {"localization": out.model_dump(), "events": [_event("localize", "localized to Tamil")]}
+    lang = out.language or "local language"
+    return {"localization": out.model_dump(), "events": [_event("localize", f"localized to {lang}")]}
 
 
 def critic(state: CampaignState) -> CampaignState:
@@ -274,10 +390,14 @@ def route_after_gate(state: CampaignState) -> str:
 def packager(state: CampaignState) -> CampaignState:
     package = {
         "brief": state.get("sanitized_brief"),
+        "brand_profile": state.get("brand_profile"),
         "research": state.get("research"),
         "strategy": state.get("strategy"),
         "copy": state.get("copy"),
         "creative": state.get("creative"),
+        "visuals": state.get("visuals"),
+        "storyboard": state.get("storyboard"),
+        "video": state.get("video"),
         "localization": state.get("localization"),
         "critique": state.get("critique"),
     }

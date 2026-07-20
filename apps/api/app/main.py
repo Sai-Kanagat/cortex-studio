@@ -14,14 +14,37 @@ _WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 
 app = FastAPI(title="Cortex Studio API", version="0.1.0")
 
+_origins = ["http://localhost:3000", "http://localhost:8000"] + [
+    o.strip() for o in settings.cors_origins.split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(router, prefix="/api")
+
+
+@app.on_event("startup")
+def _ingest_brand_docs() -> None:
+    """Auto-ingest brand docs into the vector store on boot so the RAG-grounded
+    research agent works on a fresh deploy without a manual ingestion step."""
+    try:
+        from app.memory.vector_store import get_store
+        from app.tools.registry import BRAND_STORE
+
+        store = get_store(BRAND_STORE)
+        if store.count() > 0:
+            return
+        brand_dir = Path(__file__).resolve().parents[3] / "data" / "brand"
+        for md in sorted(brand_dir.glob("*.md")):
+            parts = [p.strip() for p in md.read_text().split("\n\n") if len(p.strip()) > 40]
+            for i, ch in enumerate(parts):
+                store.add(f"{md.stem}:{i}", ch, {"source": md.name})
+    except Exception:
+        pass  # never block startup on ingestion
 
 
 @app.get("/health")

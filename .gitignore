@@ -12,4 +12,6 @@ dist/
 pgdata/
 data/store/
 data/traces/
+data/assets/
+data/uploads/
 out/

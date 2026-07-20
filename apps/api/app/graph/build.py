@@ -27,11 +27,14 @@ def build_graph(checkpointer=None):
         g.add_node(name, agents.resilient(name)(fn))
 
     node("ingest", agents.ingest)
+    node("brand_intake", agents.brand_intake)
     node("planner", agents.planner)
     node("research_agent", agents.research)
     node("strategy_agent", agents.strategy)
     node("copywriter", agents.copywriter)
     node("creative_director", agents.creative_director)
+    node("art_director", agents.art_director)
+    node("storyboard_agent", agents.storyboard)
     node("localize", agents.localize)
     node("critic", agents.critic)
     # human_gate is NOT wrapped: interrupt() raises GraphInterrupt, which resilient()
@@ -40,12 +43,15 @@ def build_graph(checkpointer=None):
     node("packager", agents.packager)
 
     g.add_edge(START, "ingest")
-    g.add_edge("ingest", "planner")
+    g.add_edge("ingest", "brand_intake")
+    g.add_edge("brand_intake", "planner")
     g.add_edge("planner", "research_agent")
     g.add_edge("research_agent", "strategy_agent")
     g.add_edge("strategy_agent", "copywriter")
     g.add_edge("copywriter", "creative_director")
-    g.add_edge("creative_director", "localize")
+    g.add_edge("creative_director", "art_director")
+    g.add_edge("art_director", "storyboard_agent")
+    g.add_edge("storyboard_agent", "localize")
     g.add_edge("localize", "critic")
 
     # critic -> (approved/cap) human_gate -> (approve/edit) packager | (reject) copywriter

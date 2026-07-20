@@ -7,6 +7,7 @@ the whole graph runs offline in tests [testing pillar].
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -236,3 +237,92 @@ def _gemini(system: str, prompt: str, model: str, max_tokens: int) -> tuple[str,
     in_tok = getattr(um, "prompt_token_count", 0) or 0
     out_tok = getattr(um, "candidates_token_count", 0) or 0
     return text, in_tok, out_tok
+
+
+# --- Multimodal: image generation + vision judging -------------------------------
+
+@dataclass
+class ImageResult:
+    data: bytes           # raw image bytes
+    mime: str             # e.g. "image/png" or "image/svg+xml"
+    model: str
+    cost_usd: float = 0.0
+    mock: bool = False
+
+
+# rough per-image reference price (Gemini image; free tier actual = $0)
+_IMAGE_PRICE = 0.03
+
+
+def _mock_image(prompt: str, w: int, h: int) -> bytes:
+    """Deterministic placeholder SVG so the whole pipeline (and the instant demo)
+    runs offline. Colour derives from the prompt so distinct assets look distinct."""
+    hh = int(hashlib.md5(prompt.encode()).hexdigest(), 16)
+    c1 = f"#{(hh & 0xFFFFFF):06x}"
+    c2 = f"#{((hh >> 24) & 0xFFFFFF):06x}"
+    label = (prompt.strip().splitlines()[0] if prompt.strip() else "asset")[:70]
+    label = label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}">'
+        f'<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">'
+        f'<stop offset="0" stop-color="{c1}"/><stop offset="1" stop-color="{c2}"/></linearGradient></defs>'
+        f'<rect width="{w}" height="{h}" fill="url(#g)"/>'
+        f'<rect x="16" y="16" width="{w-32}" height="{h-32}" fill="none" stroke="#ffffff" stroke-opacity="0.35"/>'
+        f'<text x="{w//2}" y="{h//2-10}" fill="#ffffff" font-family="sans-serif" font-size="22" '
+        f'text-anchor="middle" opacity="0.9">Cortex · generated visual</text>'
+        f'<text x="{w//2}" y="{h//2+22}" fill="#ffffff" font-family="sans-serif" font-size="13" '
+        f'text-anchor="middle" opacity="0.75">{label}</text></svg>'
+    ).encode()
+
+
+def generate_image(prompt: str, *, width: int = 1024, height: int = 1024) -> ImageResult:
+    """Generate an image from a prompt. Real path uses the Gemini image model; mock
+    path returns a deterministic SVG placeholder so everything runs with no key."""
+    if not (settings.llm_provider == "gemini" and settings.gemini_api_key):
+        return ImageResult(_mock_image(prompt, width, height), "image/svg+xml", "mock-image", 0.0, mock=True)
+
+    def _call(*_a):
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+        resp = client.models.generate_content(
+            model=settings.model_image,
+            contents=f"Generate a single marketing image. {prompt}",
+            config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
+        )
+        for part in resp.candidates[0].content.parts:
+            inline = getattr(part, "inline_data", None)
+            if inline and getattr(inline, "data", None):
+                return inline.data, inline.mime_type or "image/png"
+        raise RuntimeError("no image returned")
+
+    data, mime = _with_retry(_call, "", prompt, settings.model_image, 0)
+    return ImageResult(data, mime, settings.model_image, _IMAGE_PRICE)
+
+
+def vision_judge(image: bytes, mime: str, criteria: str) -> str:
+    """Multimodal QA: have the vision model look at an image and return JSON judgement.
+    Mock returns a passing score so offline runs exercise the parse + regen logic."""
+    if not (settings.llm_provider == "gemini" and settings.gemini_api_key):
+        return json.dumps({"approved": True, "score": 0.88, "issues": []})
+
+    def _call(*_a):
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+        resp = client.models.generate_content(
+            model=settings.model_vision,
+            contents=[
+                types.Part.from_bytes(data=image, mime_type=mime or "image/png"),
+                criteria + ' Output JSON {"approved":bool,"score":0..1,"issues":[..]}.',
+            ],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
+        )
+        return resp.text or "{}"
+
+    return _with_retry(_call, "", criteria, settings.model_vision, 0)
