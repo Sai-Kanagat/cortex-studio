@@ -1,0 +1,18 @@
+# Render.com blueprint for the live backend (optional real-AI path for the demo).
+# Deploy: push this repo, then in Render "New > Blueprint" and point at it.
+# Set GEMINI_API_KEY + LLM_PROVIDER=gemini in the dashboard (never commit the key).
+services:
+  - type: web
+    name: cortex-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: ./apps/api
+    plan: free
+    envVars:
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false          # set in the Render dashboard, not in git
+      - key: MAX_CRITIC_LOOPS
+        value: "2"
+    healthCheckPath: /health

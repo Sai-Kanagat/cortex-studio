@@ -20,17 +20,24 @@ from app.graph.state import CampaignState
 def build_graph(checkpointer=None):
     g = StateGraph(CampaignState)
 
-    # Node names are suffixed "_agent" where they would otherwise collide with a
-    # state key (LangGraph forbids that overlap).
-    g.add_node("ingest", agents.ingest)
-    g.add_node("planner", agents.planner)
-    g.add_node("research_agent", agents.research)
-    g.add_node("strategy_agent", agents.strategy)
-    g.add_node("copywriter", agents.copywriter)
-    g.add_node("creative_director", agents.creative_director)
-    g.add_node("critic", agents.critic)
+    # Every node is wrapped with agents.resilient(name): a raised exception is recorded
+    # and the graph continues (degraded) instead of crashing the run. Node names are
+    # suffixed "_agent" where they would collide with a state key (LangGraph forbids that).
+    def node(name: str, fn):
+        g.add_node(name, agents.resilient(name)(fn))
+
+    node("ingest", agents.ingest)
+    node("planner", agents.planner)
+    node("research_agent", agents.research)
+    node("strategy_agent", agents.strategy)
+    node("copywriter", agents.copywriter)
+    node("creative_director", agents.creative_director)
+    node("localize", agents.localize)
+    node("critic", agents.critic)
+    # human_gate is NOT wrapped: interrupt() raises GraphInterrupt, which resilient()
+    # would swallow and break the HITL pause/resume.
     g.add_node("human_gate", agents.human_gate)
-    g.add_node("packager", agents.packager)
+    node("packager", agents.packager)
 
     g.add_edge(START, "ingest")
     g.add_edge("ingest", "planner")
@@ -38,7 +45,8 @@ def build_graph(checkpointer=None):
     g.add_edge("research_agent", "strategy_agent")
     g.add_edge("strategy_agent", "copywriter")
     g.add_edge("copywriter", "creative_director")
-    g.add_edge("creative_director", "critic")
+    g.add_edge("creative_director", "localize")
+    g.add_edge("localize", "critic")
 
     # critic -> (approved/cap) human_gate -> (approve/edit) packager | (reject) copywriter
     g.add_conditional_edges(

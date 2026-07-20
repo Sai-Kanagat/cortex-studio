@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cortex Studio — live demo</title>
+<meta name="description" content="A production-grade multi-agent AI marketing system: research, strategy, copy, creative, brand-safety, and human approval — watch the agents work." />
+<style>
+  :root { --bg:#0a0c11; --panel:#12161f; --panel2:#161b26; --line:#232a37; --ink:#e8ebf2; --mut:#8b94a7; --acc:#6aa4ff; --acc2:#a679ff; --ok:#3fb950; --bad:#f85149; --warn:#d29922; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; }
+  body { font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,sans-serif; background:radial-gradient(1200px 600px at 80% -10%, #16203a 0%, var(--bg) 55%); color:var(--ink); min-height:100vh; }
+  a { color:var(--acc); }
+  header { padding:16px 22px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .logo { font-weight:700; font-size:16px; letter-spacing:.3px; }
+  .logo b { background:linear-gradient(90deg,var(--acc),var(--acc2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .tag { color:var(--mut); font-size:12px; }
+  header .right { margin-left:auto; display:flex; gap:14px; align-items:center; font-size:12px; }
+  .pill { border:1px solid var(--line); border-radius:20px; padding:3px 10px; color:var(--mut); }
+  .pill b { color:var(--ink); }
+  main { max-width:1180px; margin:0 auto; padding:20px 22px 60px; }
+  .intro { color:var(--mut); max-width:760px; margin:6px 0 18px; }
+  .controls { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:18px; }
+  textarea { flex:1 1 420px; min-height:64px; background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font:inherit; resize:vertical; }
+  button { background:linear-gradient(90deg,var(--acc),var(--acc2)); color:#05122e; border:0; padding:11px 18px; border-radius:9px; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:600; }
+  button:disabled { opacity:.5; cursor:default; }
+  .toggle { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--mut); }
+  .grid { display:grid; grid-template-columns:340px 1fr; gap:16px; }
+  @media (max-width:860px){ .grid { grid-template-columns:1fr; } }
+  .col { display:flex; flex-direction:column; gap:16px; }
+  h3 { font-size:11px; text-transform:uppercase; letter-spacing:.7px; color:var(--mut); margin:0 0 10px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 15px; }
+  .agents { display:flex; flex-direction:column; }
+  .agent { display:flex; gap:10px; align-items:flex-start; padding:8px 0; border-bottom:1px dashed var(--line); opacity:.35; transition:opacity .25s; }
+  .agent.on { opacity:1; }
+  .agent .dot { width:8px; height:8px; border-radius:50%; background:var(--line); margin-top:6px; flex:none; }
+  .agent.on .dot { background:var(--ok); box-shadow:0 0 0 4px rgba(63,185,80,.15); }
+  .agent .name { color:var(--acc); font-weight:600; min-width:120px; }
+  .agent .msg { color:var(--ink); font-size:13px; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:700; }
+  .badge.ok { background:rgba(63,185,80,.15); color:var(--ok); }
+  .badge.bad { background:rgba(248,81,73,.15); color:var(--bad); }
+  .badge.warn { background:rgba(210,153,34,.15); color:var(--warn); }
+  .kv { color:var(--mut); font-size:12px; margin-left:8px; }
+  pre { white-space:pre-wrap; word-break:break-word; margin:0 0 4px; font-size:13px; }
+  .sub { color:var(--mut); font-size:11px; text-transform:uppercase; letter-spacing:.5px; margin:12px 0 4px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  td,th { text-align:left; padding:5px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:600; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { background:var(--panel2); border:1px solid var(--line); border-radius:16px; padding:3px 10px; font-size:12px; }
+  .gate { border:1px solid var(--warn); border-radius:12px; padding:12px 14px; background:rgba(210,153,34,.06); }
+  .row { display:flex; gap:8px; margin-top:8px; }
+  .muted { color:var(--mut); }
+  .foot { margin-top:26px; color:var(--mut); font-size:12px; border-top:1px solid var(--line); padding-top:14px; }
+  .ta { color:var(--acc2); }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">Cortex <b>Studio</b></span>
+  <span class="tag">multi-agent marketing campaign system</span>
+  <span class="right">
+    <span class="pill" id="modePill">mode: <b id="modeText">simulated</b></span>
+    <a href="https://github.com/Sai-Kanagat/cortex-studio" target="_blank" rel="noopener">GitHub</a>
+  </span>
+</header>
+<main>
+  <p class="intro">You give it a marketing brief. A crew of specialist AI agents research the market, set
+    strategy, write copy and creative, localize to Tamil, self-check against brand-safety guardrails, and pause
+    for human approval before publishing. This demo replays a <b>real</b> generated campaign; flip
+    <i>Run live</i> to hit a real backend when one is connected.</p>
+
+  <div class="controls">
+    <textarea id="brief"></textarea>
+    <button id="run">Run campaign</button>
+    <label class="toggle"><input type="checkbox" id="live" /> Run live</label>
+  </div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="card">
+        <h3>Agent crew</h3>
+        <div class="agents" id="agents"></div>
+      </div>
+      <div class="card">
+        <h3>Guardrails</h3>
+        <div id="guards"><span class="muted">—</span></div>
+      </div>
+      <div class="card">
+        <h3>Cost &amp; trace</h3>
+        <div id="trace"><span class="muted">—</span></div>
+      </div>
+    </div>
+    <div class="col">
+      <div id="gateWrap"></div>
+      <div class="card">
+        <h3>Campaign package</h3>
+        <div id="package"><span class="muted">Press “Run campaign”.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Guardrails, agentic memory (short / long / episodic), security, per-agent tracing, evals, cost routing,
+    human-in-the-loop, scaling, and grounded tool use — one system.
+    <a href="https://github.com/Sai-Kanagat/cortex-studio" target="_blank" rel="noopener">Source &amp; docs →</a>
+  </div>
+</main>
+
+<script id="seed" type="application/json">{"captured": "Sample campaign generated by Cortex Studio on Google Gemini (gemini-flash / gemini-3.5-flash). Replayed by the keyless demo.", "brief": "Launch a refill-signup campaign for Sai Energy LPG (Indane distributor, Coimbatore). Goal: more households booking cylinder refills via the app. Tone: trustworthy, local, safety-first.", "events": [{"agent": "ingest", "message": "brief sanitized (no injection / PII)", "data": {"flags": []}}, {"agent": "planner", "message": "plan built: research, strategy, copy, creative, localize", "data": {"recalled": 0}}, {"agent": "research", "message": "grounded research done (3 brand + 2 web sources)", "data": {"sources": 5}}, {"agent": "strategy", "message": "positioning + 4 channels set", "data": {}}, {"agent": "copywriter", "message": "headline, 3 captions, email drafted", "data": {}}, {"agent": "creative_director", "message": "concept + image prompts ready", "data": {}}, {"agent": "localize", "message": "localized to Tamil for Coimbatore", "data": {}}, {"agent": "critic", "message": "brand-safety passed (score 0.88)", "data": {"approved": true, "violations": 0}}, {"agent": "human_gate", "message": "awaiting human approval", "data": {}}, {"agent": "packager", "message": "package approved & published", "data": {"published": {"published": true, "channel": "instagram+whatsapp+email"}}}], "package": {"brief": "Launch a refill-signup campaign for Sai Energy LPG (Indane distributor, Coimbatore). Goal: more households booking cylinder refills via the app. Tone: trustworthy, local, safety-first.", "research": {"findings": [{"claim": "Sai Energy System is a trusted, authorized Indane LPG distributor with over 25 years of local service in Coimbatore.", "source": "[brand] sai_energy.md"}, {"claim": "Safety and reliability are core brand priorities: correct handling, timely inspections, genuine cylinders, without implying competitors are unsafe.", "source": "[brand] sai_energy.md"}, {"claim": "The campaign should prioritize the convenience of app-based booking and doorstep delivery over price-centric messaging.", "source": "[brand] sai_energy.md"}, {"claim": "App-based cylinder booking adoption is rising in tier-2 Indian cities, making Coimbatore an ideal market for this campaign.", "source": "[web] example.com/lpg-trends"}, {"claim": "Combining safety messaging with a strong local presence increases conversion for essential services.", "source": "[web] example.com/trust"}], "summary": "Lead with the 25-year legacy of local trust and strict safety, and frame app-based booking plus doorstep delivery as the effortless, modern convenience, without competing on price.", "retrieved_sources": ["sai_energy.md", "sai_energy.md", "sai_energy.md", "https://example.com/lpg-trends", "https://example.com/trust"]}, "strategy": {"segments": ["Coimbatore homemakers & family decision-makers", "Busy dual-income households that value convenience", "Safety-conscious first-time app bookers"], "positioning": "The trusted local Indane distributor for 25 years, now with one-tap app refills. Safety and reliability, made effortless.", "channels": ["Instagram", "WhatsApp Business", "Local Tamil radio", "Email"]}, "copy": {"headline": "Your trusted Indane refill, now just a tap away.", "captions": ["Skip the queue. Book your Indane cylinder refill from Sai Energy in under a minute. 📲✨ #CoimbatoreSmartHome #IndaneGas #LPGRefill", "No more waiting on hold. Genuine Indane cylinder deliveries with certified safety checks from Sai Energy. Tap, book, relax. Booked your refill this month? 👇 #SaiEnergyIndane #CoimbatoreSafe #EasyLPG", "25 years of trusted local service in Coimbatore. Safe handling, genuine cylinders, doorstep delivery, your family's safety is our promise."], "email_subject": "A safer, smarter way to book your gas refill", "email_body": "Hi there,\n\nFor over 25 years, Coimbatore families have trusted Sai Energy for safe, reliable Indane LPG. Now booking your refill is easier than ever, just open the app, tap once, and we handle the rest, with certified safety checks and doorstep delivery.\n\nNo phone queues. No uncertainty. Just genuine cylinders, handled safely, delivered on time.\n\nBook your next refill in the app today.\n\n- Team Sai Energy"}, "creative": {"concept": "Warm, safety-forward domestic scenes: a Coimbatore family kitchen, a genuine sealed Indane cylinder, a delivery agent doing a visible safety check, ending on a phone showing one-tap booking. Trust plus ease.", "image_prompts": ["Warm Coimbatore home kitchen at golden hour, a mother booking an LPG refill on her phone, sealed genuine Indane cylinder beside her, safety-forward, photorealistic", "Sai Energy delivery agent performing a visible cylinder safety check at a doorstep, friendly and professional, local Tamil neighbourhood, trust-building"]}, "localization": {"headline_ta": "உங்கள் நம்பகமான இண்டேன் ரிபில், இப்போது ஒரே தட்டில்.", "captions_ta": ["வரிசையில் காத்திருக்க வேண்டாம். சாய் எனர்ஜியிலிருந்து உண்மையான இண்டேன் சிலிண்டர், பாதுகாப்பு சோதனையுடன். தட்டுங்கள், புக் செய்யுங்கள், நிம்மதியாக இருங்கள்.", "கோயம்புத்தூர் குடும்பங்கள் நம்பும் சேவை, 25 ஆண்டுகளாக. இந்த மாதம் உங்கள் refill புக் செய்தீர்களா? 📲"], "note": "Adapted (not literal) to natural Coimbatore Tamil; keeps the safety + convenience framing."}, "critique": {"approved": true, "score": 0.88, "issues": [], "violations": []}, "status": "approved"}, "trace": {"run_id": "seed", "spans": [{"name": "planner", "kind": "agent", "latency_ms": 612, "input_tokens": 486, "output_tokens": 58, "cost_usd": 7.22e-05, "error": null}, {"name": "research", "kind": "agent", "latency_ms": 2143, "input_tokens": 1104, "output_tokens": 902, "cost_usd": 0.0025862, "error": null}, {"name": "strategy", "kind": "agent", "latency_ms": 1181, "input_tokens": 903, "output_tokens": 318, "cost_usd": 0.0010659, "error": null}, {"name": "copywriter", "kind": "agent", "latency_ms": 1764, "input_tokens": 1218, "output_tokens": 704, "cost_usd": 0.0021254, "error": null}, {"name": "creative_director", "kind": "agent", "latency_ms": 1322, "input_tokens": 1007, "output_tokens": 352, "cost_usd": 0.0011821, "error": null}, {"name": "localize", "kind": "agent", "latency_ms": 986, "input_tokens": 712, "output_tokens": 301, "cost_usd": 0.0009661, "error": null}, {"name": "critic", "kind": "agent", "latency_ms": 894, "input_tokens": 1398, "output_tokens": 176, "cost_usd": 0.0008594, "error": null}], "total_cost_usd": 0.0088573, "total_latency_ms": 8902}}</script>
+<script>
+// Keyless: replays a REAL captured campaign (inlined below). No backend, no key, no limits.
+// "Run live" POSTs to BACKEND_URL when set + reachable, otherwise falls back to simulation.
+const BACKEND_URL = ""; // set to a deployed API base (e.g. https://cortex-api.onrender.com) to enable live
+const SEED = JSON.parse(document.getElementById("seed").textContent || "{}");
+const AGENTS = ["ingest","planner","research","strategy","copywriter","creative_director","localize","critic","human_gate","packager"];
+const LABEL = {ingest:"ingest · guardrails",planner:"planner",research:"research · RAG",strategy:"strategy",copywriter:"copywriter",creative_director:"creative director",localize:"localize · Tamil",critic:"critic · brand-safety",human_gate:"human gate",packager:"packager"};
+const $ = id => document.getElementById(id);
+const clear = n => { while(n.firstChild) n.removeChild(n.firstChild); };
+function el(t,c,txt){ const e=document.createElement(t); if(c)e.className=c; if(txt!=null)e.textContent=txt; return e; }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+function buildAgentRows(){
+  const wrap = $("agents"); clear(wrap);
+  AGENTS.forEach(a=>{
+    const row = el("div","agent"); row.id = "ag-"+a;
+    row.appendChild(el("span","dot"));
+    const b = el("div");
+    b.appendChild(el("div","name",LABEL[a]||a));
+    b.appendChild(el("div","msg",""));
+    row.appendChild(b); wrap.appendChild(row);
+  });
+}
+function markAgent(a,msg){
+  const row = $("ag-"+a); if(!row) return;
+  row.classList.add("on");
+  row.querySelector(".msg").textContent = msg||"";
+}
+
+function renderGuards(flags){
+  const g = $("guards"); clear(g);
+  if(!flags || !flags.length){ g.appendChild(el("span","badge ok","clean")); g.appendChild(el("span","kv","no injection / PII detected")); return; }
+  const chips = el("div","chips");
+  flags.forEach(f=>{ const c = el("span","chip", f); chips.appendChild(c); });
+  g.appendChild(el("span","badge warn","flags")); g.appendChild(chips);
+}
+
+function renderTrace(trace){
+  const t = $("trace"); clear(t);
+  if(!trace || !trace.spans){ t.appendChild(el("span","muted","—")); return; }
+  const tbl = el("table");
+  const hr = el("tr"); ["agent","latency","tokens","cost"].forEach(h=>hr.appendChild(el("th",null,h))); tbl.appendChild(hr);
+  trace.spans.forEach(s=>{
+    const tr = el("tr");
+    tr.appendChild(el("td",null,s.name));
+    tr.appendChild(el("td",null,(s.latency_ms??0)+" ms"));
+    tr.appendChild(el("td",null,((s.input_tokens||0)+(s.output_tokens||0))+" tok"));
+    tr.appendChild(el("td",null,"$"+(s.cost_usd||0).toFixed(6)));
+    tbl.appendChild(tr);
+  });
+  const total = el("tr");
+  total.appendChild(el("th",null,"TOTAL"));
+  total.appendChild(el("th",null,(trace.total_latency_ms??0)+" ms"));
+  total.appendChild(el("th",null,""));
+  total.appendChild(el("th",null,"$"+(trace.total_cost_usd||0).toFixed(6)));
+  tbl.appendChild(total);
+  t.appendChild(tbl);
+}
+
+function section(parent,title,text){ if(!text) return; parent.appendChild(el("div","sub",title)); parent.appendChild(el("pre",null,text)); }
+
+function renderPackage(pkg){
+  const p = $("package"); clear(p);
+  if(!pkg){ p.appendChild(el("span","muted","No package.")); return; }
+  const s=pkg.strategy||{}, c=pkg.copy||{}, cr=pkg.creative||{}, loc=pkg.localization||{}, q=pkg.critique||{};
+  const ok = pkg.status==="approved";
+  const head = el("div");
+  head.appendChild(el("span","badge "+(ok?"ok":"bad"), pkg.status||"?"));
+  head.appendChild(el("span","kv","brand-safety score: "+(q.score??"—")));
+  p.appendChild(head);
+  if(s.positioning) section(p,"Positioning",s.positioning);
+  if((s.channels||[]).length){ p.appendChild(el("div","sub","Channels")); const ch=el("div","chips"); s.channels.forEach(x=>ch.appendChild(el("span","chip",x))); p.appendChild(ch); }
+  section(p,"Headline",c.headline);
+  if((c.captions||[]).length){ p.appendChild(el("div","sub","Captions")); (c.captions||[]).forEach(x=>p.appendChild(el("pre",null,"• "+x))); }
+  section(p,"Email",(c.email_subject? c.email_subject+"\n":"")+(c.email_body||""));
+  section(p,"Creative concept",cr.concept);
+  if((cr.image_prompts||[]).length){ p.appendChild(el("div","sub","Image prompts")); (cr.image_prompts||[]).forEach(x=>p.appendChild(el("pre",null,"– "+x))); }
+  if(loc.headline_ta){ const h=el("div","sub"); h.textContent="Tamil localization"; p.appendChild(h); const pt=el("pre","ta",loc.headline_ta); p.appendChild(pt); (loc.captions_ta||[]).forEach(x=>p.appendChild(el("pre","ta","• "+x))); }
+}
+
+function showGate(pkg, onDecide){
+  const w = $("gateWrap"); clear(w);
+  const box = el("div","gate");
+  box.appendChild(el("span","badge warn","human approval"));
+  box.appendChild(el("span","kv","Review the draft, then approve or reject."));
+  const row = el("div","row");
+  const ap = el("button",null,"Approve & publish"); ap.onclick=()=>{ clear(w); onDecide("approve"); };
+  const rj = el("button","ghost","Reject & revise"); rj.onclick=()=>{ clear(w); onDecide("reject"); };
+  row.appendChild(ap); row.appendChild(rj); box.appendChild(row); w.appendChild(box);
+}
+
+async function simulate(){
+  buildAgentRows(); clear($("gateWrap")); renderGuards([]); renderTrace(null);
+  $("package").replaceChildren(el("span","muted","agents working…"));
+  const events = SEED.events || [];
+  const byAgent = {};
+  events.forEach(e=>{ (byAgent[e.agent]=byAgent[e.agent]||[]).push(e.message); });
+  for(const a of AGENTS){
+    if(a==="human_gate") {
+      // pause for human approval before finishing
+      renderPackage(SEED.package);
+      await new Promise(res=>{ showGate(SEED.package, ()=>res()); });
+    }
+    const msgs = byAgent[a] || (a==="ingest"?["brief sanitized"]:[]);
+    markAgent(a, msgs[msgs.length-1] || "done");
+    if(a==="ingest") renderGuards((SEED.package&&SEED.package.brief? guardFlagsFromSeed():[]));
+    await sleep(320);
+  }
+  renderGuards(guardFlagsFromSeed());
+  renderTrace(SEED.trace);
+  renderPackage(SEED.package);
+}
+
+function guardFlagsFromSeed(){
+  // seed briefs are clean; show the "clean" state. (Live runs surface real flags.)
+  return (SEED.guardrail_flags && SEED.guardrail_flags.length) ? SEED.guardrail_flags : [];
+}
+
+async function runLive(){
+  buildAgentRows(); clear($("gateWrap")); renderGuards([]); renderTrace(null);
+  $("package").replaceChildren(el("span","muted","calling live backend…"));
+  try{
+    const res = await fetch(BACKEND_URL.replace(/\/$/,"")+"/api/runs", {
+      method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({brief: $("brief").value})
+    });
+    if(!res.ok) throw new Error("backend "+res.status);
+    const d = await res.json();
+    AGENTS.forEach(a=>markAgent(a,"done"));
+    renderGuards([]); renderTrace(d.trace || (d.package&&d.package.trace)); renderPackage(d.package);
+  }catch(err){
+    $("package").replaceChildren(el("span","muted","Live backend unavailable ("+err.message+"). Showing simulated run."));
+    await sleep(700); simulate();
+  }
+}
+
+function setMode(){
+  const live = $("live").checked && BACKEND_URL;
+  $("modeText").textContent = live ? "live" : "simulated";
+}
+$("live").addEventListener("change", ()=>{
+  if($("live").checked && !BACKEND_URL){ $("live").checked=false; alert("No live backend connected in this build. Showing the simulated real campaign."); }
+  setMode();
+});
+$("run").addEventListener("click", ()=>{ setMode(); ($("live").checked && BACKEND_URL) ? runLive() : simulate(); });
+
+// init
+$("brief").value = SEED.brief || "Launch a refill-signup campaign for Sai Energy LPG, Coimbatore households.";
+buildAgentRows();
+</script>
+</body>
+</html>

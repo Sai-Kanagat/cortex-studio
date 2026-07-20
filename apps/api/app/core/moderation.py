@@ -12,7 +12,11 @@ from typing import Any
 _BANNED = {
     "unsafe_claims": [r"guaranteed?\s+safe", r"no\s+risk", r"100%\s+safe"],
     "fearmongering": [r"deadly", r"explosion.*neighbou?r", r"will\s+kill"],
-    "competitor_attack": [r"competitor.*dangerous", r"their\s+cylinders.*unsafe"],
+    "competitor_attack": [
+        r"competitor.*(dangerous|unsafe)",
+        r"their\s+(cylinders|gas|product).*(unsafe|dangerous)",
+        r"(cylinders|gas)\s+are\s+unsafe",
+    ],
 }
 
 

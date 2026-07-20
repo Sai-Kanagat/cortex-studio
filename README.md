@@ -1,9 +1,15 @@
 # Cortex Studio
 
+[![CI](https://github.com/Sai-Kanagat/cortex-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/Sai-Kanagat/cortex-studio/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org)
+
+**Live demo:** https://sai-kanagat.github.io/cortex-studio/  ·  no signup, runs a real captured campaign in your browser.
+
 A production-grade **multi-agent AI system for marketing campaigns**. You hand it a
 brief; a crew of specialist agents research the market, set strategy, write copy and
-creative briefs, self-critique against brand guardrails, pause for human approval, and
-assemble a final campaign package.
+creative briefs, localize to the local language, self-critique against brand guardrails,
+pause for human approval, and assemble a final campaign package.
 
 Built as a reference implementation of the ten pillars that separate a demo from a
 production applied-AI system: guardrails, agentic memory (short/long/episodic),
@@ -22,9 +28,15 @@ human-in-the-loop, scaling, and reliable tool integrations.
 | **M5** | Golden-set evals (heuristic + judge + faithfulness), CI, promptfoo | done |
 | **M6** | HITL interrupt + approval UI, async queue/scaling, dashboard, demo doc | done |
 
-All six milestones landed and verified on the offline mock path (25 passing tests + eval
-gate + a live browser run). Production swaps (real Claude, pgvector, Langfuse, Redis queue,
-Tavily) are documented drop-ins that don't change the graph or the interfaces.
+All six milestones landed and verified on the offline mock path (46 passing tests incl.
+concurrency/red-team/fuzz suites + eval gate + a live browser run). Runs on **Google Gemini
+(free tier)** or Anthropic Claude. Production swaps (pgvector, Langfuse, Redis queue, Tavily)
+are documented drop-ins that don't change the graph or interfaces.
+
+**Also inside:** a Tamil **localization agent** (Coimbatore is Tamil-speaking), a resilient
+node wrapper (one failing agent degrades, never crashes the run), an adversarial **red-team**
+test suite (injection / PII / jailbreak / off-brand all blocked), a **concurrency stress**
+suite (24 parallel runs), and Markdown/PDF **campaign export** (`scripts/export.py`).
 
 ## Architecture
 

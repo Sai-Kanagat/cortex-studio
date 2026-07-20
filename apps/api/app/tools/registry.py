@@ -27,10 +27,29 @@ def rag_retrieve(query: str, k: int = 3) -> dict[str, Any]:
 
 
 def web_search(query: str, k: int = 3) -> dict[str, Any]:
-    """Web search. Mock returns canned, plausible market signals; production calls Tavily."""
-    if settings.llm_provider == "anthropic" and settings.anthropic_api_key and False:
-        # production: wire Tavily/Brave here
-        raise NotImplementedError
+    """Web search. Uses Tavily when TAVILY_API_KEY is set; otherwise returns canned,
+    plausible market signals so the graph runs with no external dependency."""
+    import os
+
+    tavily_key = os.environ.get("TAVILY_API_KEY", "")
+    if tavily_key:
+        try:
+            import httpx
+
+            r = httpx.post(
+                "https://api.tavily.com/search",
+                json={"api_key": tavily_key, "query": query, "max_results": k},
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            results = [
+                {"title": x.get("title", ""), "url": x.get("url", ""), "snippet": x.get("content", "")[:300]}
+                for x in data.get("results", [])[:k]
+            ]
+            return {"results": results, "query": query, "source": "tavily"}
+        except Exception:
+            pass  # fall through to canned on any failure
     canned = [
         {"title": "LPG refill booking trends 2026", "url": "https://example.com/lpg-trends",
          "snippet": "App-based cylinder booking adoption rising in tier-2 Indian cities."},

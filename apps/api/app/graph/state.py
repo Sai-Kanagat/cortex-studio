@@ -40,6 +40,13 @@ class CreativeOutput(BaseModel):
     image_prompts: list[str] = Field(default_factory=list)
 
 
+class LocalizationOutput(BaseModel):
+    # Coimbatore is Tamil-speaking; localizing lifts trust for a local LPG brand.
+    headline_ta: str = ""
+    captions_ta: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
 class CritiqueOutput(BaseModel):
     approved: bool = False
     score: float = 0.0  # 0..1 brand+quality score
@@ -62,6 +69,7 @@ class CampaignState(TypedDict, total=False):
     strategy: dict[str, Any]
     copy: dict[str, Any]
     creative: dict[str, Any]
+    localization: dict[str, Any]
     critique: dict[str, Any]
 
     recalled_episodes: list[dict[str, Any]]
@@ -76,4 +84,4 @@ class CampaignState(TypedDict, total=False):
     events: Annotated[list[dict[str, Any]], _merge_events]  # streamed trace events
     cost: dict[str, Any]
     trace: dict[str, Any]
-    guardrail_flags: list[str]
+    guardrail_flags: Annotated[list[str], _merge_events]

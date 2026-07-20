@@ -5,8 +5,9 @@ M2+ enriches them (real RAG in research, tools in strategy/creative, etc.) witho
 changing these signatures or the graph wiring."""
 from __future__ import annotations
 
+import functools
 import json
-from typing import Any
+from typing import Any, Callable
 
 from app.core.config import settings
 from app.core.guardrails import sanitize_input
@@ -18,6 +19,7 @@ from app.graph.state import (
     CopyOutput,
     CreativeOutput,
     CritiqueOutput,
+    LocalizationOutput,
     ResearchOutput,
     StrategyOutput,
 )
@@ -38,6 +40,24 @@ def reset_run(run_id: str) -> None:
 
 def _event(agent: str, msg: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"agent": agent, "message": msg, "data": data or {}}
+
+
+def resilient(name: str) -> Callable:
+    """Wrap a node so a raised exception is recorded as an event + guardrail flag and
+    the graph continues instead of 500-ing. Reliability pillar: one bad agent (LLM
+    outage, malformed tool result) degrades the run, never crashes it."""
+    def deco(fn: Callable[[CampaignState], CampaignState]) -> Callable[[CampaignState], CampaignState]:
+        @functools.wraps(fn)
+        def wrapper(state: CampaignState) -> CampaignState:
+            try:
+                return fn(state)
+            except Exception as e:  # noqa: BLE001 - deliberate catch-all boundary
+                return {
+                    "events": [_event(name, f"agent error (degraded): {type(e).__name__}", {"error": str(e)[:200]})],
+                    "guardrail_flags": [f"AGENT_ERROR:{name}"],
+                }
+        return wrapper
+    return deco
 
 
 def _run(agent: str, system: str, prompt: str, tier: Tier) -> str:
@@ -167,6 +187,24 @@ def creative_director(state: CampaignState) -> CampaignState:
     return {"creative": dump, "events": [_event("creative_director", "creative briefs ready")]}
 
 
+def localize(state: CampaignState) -> CampaignState:
+    """Localize the headline + captions to Tamil (Coimbatore's language). Marquee
+    feature: a local LPG brand earns trust in the local language. Skips cleanly if
+    there's no copy yet (degraded upstream)."""
+    copy = state.get("copy", {}) or {}
+    if not copy.get("headline") and not copy.get("captions"):
+        return {"localization": {}, "events": [_event("localize", "no copy to localize, skipped")]}
+    txt = _run(
+        "localize",
+        "You are a Tamil marketing localizer for Coimbatore. Translate/adapt the copy to natural, "
+        "trustworthy Tamil (not literal). Output JSON {\"headline_ta\":..,\"captions_ta\":[..],\"note\":..}.",
+        f"Headline: {copy.get('headline')}\nCaptions: {copy.get('captions')}",
+        Tier.MID,
+    )
+    out: LocalizationOutput = _parse(LocalizationOutput, txt)
+    return {"localization": out.model_dump(), "events": [_event("localize", "localized to Tamil")]}
+
+
 def critic(state: CampaignState) -> CampaignState:
     """Brand-safety + quality gate. Uses the heavy tier because catching off-brand
     output is the highest-leverage judgment in the graph."""
@@ -240,6 +278,7 @@ def packager(state: CampaignState) -> CampaignState:
         "strategy": state.get("strategy"),
         "copy": state.get("copy"),
         "creative": state.get("creative"),
+        "localization": state.get("localization"),
         "critique": state.get("critique"),
     }
     approved = (state.get("critique") or {}).get("approved", False)
