@@ -17,14 +17,10 @@ services:
       - key: CORTEX_PASSCODE
         sync: false                  # e.g. 0000 (set in the dashboard)
       - key: CORTEX_DATA_DIR
-        value: /var/data             # persistent disk mount below
+        value: /tmp/cortex-data       # ephemeral (free tier has no disks); regenerated per run
       - key: CORTEX_DAILY_RUN_CAP
         value: "5"
       - key: CORTEX_CORS_ORIGINS
         value: https://saikanagat.com,https://www.saikanagat.com
       - key: MAX_CRITIC_LOOPS
         value: "2"
-    disk:
-      name: cortex-data
-      mountPath: /var/data           # generated assets + uploads + vector store persist here
-      sizeGB: 1
