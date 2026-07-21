@@ -1,18 +1,30 @@
-# Render.com blueprint for the live backend (optional real-AI path for the demo).
-# Deploy: push this repo, then in Render "New > Blueprint" and point at it.
-# Set GEMINI_API_KEY + LLM_PROVIDER=gemini in the dashboard (never commit the key).
+# Render blueprint for the Cortex Studio backend.
+# Deploy: Render dashboard -> New -> Blueprint -> connect this repo. Then set the two
+# secret env vars (GEMINI_API_KEY, CORTEX_PASSCODE) in the dashboard. See docs/deploy.md.
 services:
   - type: web
     name: cortex-api
     runtime: docker
     dockerfilePath: ./apps/api/Dockerfile
-    dockerContext: ./apps/api
+    dockerContext: .                 # repo root, so brand docs + layout are in the image
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: LLM_PROVIDER
         value: gemini
       - key: GEMINI_API_KEY
-        sync: false          # set in the Render dashboard, not in git
+        sync: false                  # paste in the Render dashboard, never in git
+      - key: CORTEX_PASSCODE
+        sync: false                  # e.g. 0000 (set in the dashboard)
+      - key: CORTEX_DATA_DIR
+        value: /var/data             # persistent disk mount below
+      - key: CORTEX_DAILY_RUN_CAP
+        value: "5"
+      - key: CORTEX_CORS_ORIGINS
+        value: https://saikanagat.com,https://www.saikanagat.com
       - key: MAX_CRITIC_LOOPS
         value: "2"
-    healthCheckPath: /health
+    disk:
+      name: cortex-data
+      mountPath: /var/data           # generated assets + uploads + vector store persist here
+      sizeGB: 1
