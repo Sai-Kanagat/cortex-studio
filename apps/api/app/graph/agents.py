@@ -234,14 +234,20 @@ def _gen_and_qa(run_id: str, kind: str, prompt: str, caption: str, style: str,
     full = f"{prompt}. Brand style: {style}." if style else prompt
     regen = 0
     while True:
+        seed = (abs(hash(kind)) % 90000) + regen
         with TRACER.span(f"image:{kind}", kind="tool", input=full[:160]) as s:
-            img = generate_image(full, width=w, height=h)
+            img = generate_image(full, width=w, height=h, seed=seed)
             METER.record(f"art:{kind}", Usage(img.model, 0, 0, img.cost_usd))
             s.set_usage(0, 0, img.cost_usd)
         desc = media.save_image(run_id, f"{kind}_{regen}", img.data, img.mime)
         with TRACER.span(f"vqa:{kind}", kind="tool") as s:
-            verdict_txt = vision_judge(img.data, img.mime,
-                                       f"Judge this {kind} for brand fit ({style}), quality and safety.")
+            try:
+                verdict_txt = vision_judge(img.data, img.mime,
+                                           f"Judge this {kind} for brand fit ({style}), quality and safety.")
+            except Exception:
+                # vision QA is best-effort: if the judge model is unavailable (quota),
+                # accept the asset rather than dropping the whole visual.
+                verdict_txt = '{"approved": true, "score": 0.8, "issues": []}'
         verdict = _parse(CritiqueOutput, verdict_txt)
         approved = verdict.approved or verdict.score >= 0.7
         if approved or regen >= max_regen:

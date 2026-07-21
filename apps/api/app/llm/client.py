@@ -275,10 +275,44 @@ def _mock_image(prompt: str, w: int, h: int) -> bytes:
     ).encode()
 
 
-def generate_image(prompt: str, *, width: int = 1024, height: int = 1024) -> ImageResult:
-    """Generate an image from a prompt. Real path uses the Gemini image model; mock
-    path returns a deterministic SVG placeholder so everything runs with no key."""
-    if not (settings.llm_provider == "gemini" and settings.gemini_api_key):
+def _pollinations_image(prompt: str, width: int, height: int, seed: int) -> ImageResult:
+    """Free, keyless image generation (Flux via pollinations.ai). Returns real pixels
+    at zero cost, decoupled from any paid quota."""
+    import urllib.parse
+
+    url = (
+        "https://image.pollinations.ai/prompt/"
+        + urllib.parse.quote(prompt[:1200])
+        + f"?width={width}&height={height}&nologo=true&seed={seed}&model=flux"
+    )
+
+    def _call(*_a):
+        import httpx
+
+        r = httpx.get(url, timeout=90)
+        r.raise_for_status()
+        if not r.content or not r.headers.get("content-type", "").startswith("image"):
+            raise RuntimeError("no image")
+        return r.content, r.headers.get("content-type", "image/jpeg").split(";")[0]
+
+    data, mime = _with_retry(_call, "", prompt, "pollinations", 0)
+    return ImageResult(data, mime, "pollinations-flux", 0.0)
+
+
+def generate_image(prompt: str, *, width: int = 1024, height: int = 1024, seed: int = 0) -> ImageResult:
+    """Generate an image from a prompt. Provider is configurable: 'pollinations' (free,
+    keyless, default) or 'gemini' (paid billing). Falls back to a deterministic SVG
+    placeholder so everything still runs offline with no network/key."""
+    # Offline / test mode: deterministic SVG, never touches the network.
+    if settings.llm_provider == "mock":
+        return ImageResult(_mock_image(prompt, width, height), "image/svg+xml", "mock-image", 0.0, mock=True)
+    provider = settings.image_provider
+    if provider == "pollinations":
+        try:
+            return _pollinations_image(prompt, width, height, seed or (abs(hash(prompt)) % 100000))
+        except Exception:
+            return ImageResult(_mock_image(prompt, width, height), "image/svg+xml", "mock-image", 0.0, mock=True)
+    if not (provider == "gemini" and settings.gemini_api_key):
         return ImageResult(_mock_image(prompt, width, height), "image/svg+xml", "mock-image", 0.0, mock=True)
 
     def _call(*_a):

@@ -27,7 +27,9 @@ class Settings:
     model_mid: str = _get("MODEL_MID", "")
     model_heavy: str = _get("MODEL_HEAVY", "")
 
-    # Multimodal: image generation + vision-capable model (Gemini only).
+    # Multimodal: image generation + vision-capable model.
+    # image_provider: "pollinations" (free, keyless, Flux) or "gemini" (needs paid billing).
+    image_provider: str = _get("IMAGE_PROVIDER", "pollinations")
     model_image: str = _get("MODEL_IMAGE", "gemini-2.5-flash-image")
     model_vision: str = _get("MODEL_VISION", "gemini-flash-latest")
 
