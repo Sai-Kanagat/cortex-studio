@@ -1,3 +1,5 @@
+<a href="https://sai-kanagat.github.io/cortex-studio/"><img src=".github/assets/banner.svg" width="100%" alt="Cortex Studio. 13 nodes, one human gate."></a>
+
 # Cortex Studio
 
 [![CI](https://github.com/Sai-Kanagat/cortex-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/Sai-Kanagat/cortex-studio/actions)
@@ -21,14 +23,14 @@ human-in-the-loop, scaling, and reliable tool integrations.
 | Milestone | Scope | State |
 |-----------|-------|-------|
 | **M0** | Repo + Docker stack (api, postgres/pgvector, redis) | done |
-| **M1** | 8-node LangGraph agent graph, streaming API, mock-LLM offline mode | done |
+| **M1** | 13-node LangGraph graph, streaming API, mock-LLM offline mode | done |
 | **M2** | Vector memory + RAG + web-search/image/publish tools + episodic recall | done |
 | **M3** | Input+output guardrails, publish-gating, auth, rate limiting, secrets doc | done |
 | **M4** | Per-agent tracing (Langfuse + local), model-tier router, prompt cache | done |
 | **M5** | Golden-set evals (heuristic + judge + faithfulness), CI, promptfoo | done |
 | **M6** | HITL interrupt + approval UI, async queue/scaling, dashboard, demo doc | done |
 
-All six milestones landed and verified on the offline mock path (46 passing tests incl.
+All six milestones landed and verified on the offline mock path (52 passing tests as of 25 November 2026, incl.
 concurrency/red-team/fuzz suites + eval gate + a live browser run). Runs on **Google Gemini
 (free tier)** or Anthropic Claude. Production swaps (pgvector, Langfuse, Redis queue, Tavily)
 are documented drop-ins that don't change the graph or interfaces.
@@ -41,9 +43,11 @@ suite (24 parallel runs), and Markdown/PDF **campaign export** (`scripts/export.
 ## Architecture
 
 ```
-brief -> ingest(guardrails) -> planner -> research -> strategy -> copywriter
-      -> creative_director -> critic --approved--> packager -> package
-                                    \--revise--/  (bounded by MAX_CRITIC_LOOPS)
+brief -> ingest -> brand_intake -> planner -> research -> strategy -> copywriter
+      -> creative_director -> art_director -> storyboard -> localize -> critic
+critic --revise--> copywriter (bounded by MAX_CRITIC_LOOPS)
+critic --approved--> human_gate --approve or edit--> packager -> package
+                                \--reject--> copywriter
 ```
 
 Shared typed `CampaignState` flows through a LangGraph state machine. Every LLM call
@@ -51,11 +55,11 @@ goes through one client layer that (a) routes to the cheapest capable model tier
 (b) meters tokens + cost per agent, and (c) can swap in a deterministic **mock** so
 the entire graph runs offline with no API key.
 
-- `apps/api/app/graph/` — state, agents (the 8 nodes), graph wiring
-- `apps/api/app/llm/` — model router + cost meter + mock
-- `apps/api/app/core/` — config + guardrails (injection/PII)
-- `apps/api/app/api/` — FastAPI routes (`/api/runs`, `/api/runs/stream`)
-- `apps/web/` — Next.js frontend (scaffolding in M1, UI in M6)
+- `apps/api/app/graph/`: state, agents (the 13 nodes), graph wiring
+- `apps/api/app/llm/`: model router + cost meter + mock
+- `apps/api/app/core/`: config + guardrails (injection/PII)
+- `apps/api/app/api/`: FastAPI routes (`/api/runs`, `/api/runs/stream`)
+- `apps/web/`: Next.js frontend (scaffolding in M1, UI in M6)
 
 ## Run it
 
@@ -69,7 +73,7 @@ cd apps/api && python -m pytest -q         # tests
 uvicorn app.main:app --reload              # API on :8000  (GET /health)
 ```
 
-Real LLM (Gemini has a free tier — key from https://aistudio.google.com, no card):
+Real LLM (Gemini has a free tier, key from https://aistudio.google.com, no card):
 
 ```bash
 export LLM_PROVIDER=gemini GEMINI_API_KEY=...        # free
@@ -87,16 +91,16 @@ cp .env.example .env
 docker compose up --build                  # api + postgres/pgvector + redis
 ```
 
-## Pillar → where it lives (interview cheat-sheet)
+## Pillar → where it lives
 
-- **Guardrails** — `core/guardrails.py` (injection neutralize + PII redaction) + Pydantic
+- **Guardrails**: `core/guardrails.py` (injection neutralize + PII redaction) + Pydantic
   output schemas on every agent + the brand-safety critic loop.
-- **Memory** — short-term: LangGraph checkpointer (resumable threads); long-term + episodic:
+- **Memory**: short-term: LangGraph checkpointer (resumable threads); long-term + episodic:
   pgvector (M2).
-- **Security** — API-key auth (`require_api_key`), PII kept out of traces, env-only secrets.
-- **Observability + tracing** — cost meter live now; Langfuse spans in M4.
-- **Evaluation** — pytest trajectory tests now; Ragas + promptfoo + LLM-judge golden set in M5.
-- **Cost optimization** — model-tier router + per-agent cost meter (`llm/client.py`).
-- **HITL** — critic loop now; `interrupt()` approval gate + UI in M6.
-- **Scaling** — async FastAPI + stateless graph; Redis queue + workers in M6.
-- **Tool integrations** — web search + RAG retriever + image-brief + mock publish in M2.
+- **Security**: API-key auth (`require_api_key`), PII kept out of traces, env-only secrets.
+- **Observability + tracing**: cost meter live now; Langfuse spans in M4.
+- **Evaluation**: pytest trajectory tests now; Ragas + promptfoo + LLM-judge golden set in M5.
+- **Cost optimization**: model-tier router + per-agent cost meter (`llm/client.py`).
+- **HITL**: critic loop now; `interrupt()` approval gate + UI in M6.
+- **Scaling**: async FastAPI + stateless graph; Redis queue + workers in M6.
+- **Tool integrations**: web search + RAG retriever + image-brief + mock publish in M2.
